@@ -1,0 +1,213 @@
+---
+- name: Update apt cache
+  apt:
+    update_cache: yes
+    cache_valid_time: 3600
+
+- name: Install required packages
+  apt:
+    name:
+      - ufw
+      - sudo
+      - fail2ban
+    state: present
+
+# ---------------------------------------------------------------------------
+# Deploy user — used by Ansible and deploy.sh after initial provisioning
+# ---------------------------------------------------------------------------
+- name: Create deploy user
+  user:
+    name: deploy
+    shell: /bin/bash
+    create_home: yes
+    password: "{{ deploy_sudo_password }}"
+
+- name: Add SSH public key for deploy user
+  authorized_key:
+    user: deploy
+    state: present
+    key: "{{ deploy_pubkey }}"
+
+- name: Allow deploy user full passwordless sudo
+  copy:
+    dest: /etc/sudoers.d/deploy
+    content: "deploy ALL=(ALL) ALL\n"
+    validate: visudo -cf %s
+    mode: "0440"
+
+# ---------------------------------------------------------------------------
+# app-deploy user — restricted to docker compose on /opt/app (CI/CD key only)
+# ---------------------------------------------------------------------------
+- name: Create app-deploy user
+  user:
+    name: app-deploy
+    shell: /bin/bash
+    create_home: yes
+
+- name: Add SSH public key for app-deploy user
+  authorized_key:
+    user: app-deploy
+    state: present
+    key: "{{ app_deploy_pubkey }}"
+
+- name: Allow app-deploy user to run docker compose on /opt/app only
+  copy:
+    dest: /etc/sudoers.d/app-deploy
+    content: |
+      app-deploy ALL=(ALL) NOPASSWD: /usr/bin/docker compose -f /opt/app/docker-compose.yml *
+    validate: visudo -cf %s
+    mode: "0440"
+
+# ---------------------------------------------------------------------------
+# coturn service user — system account, no login, no SSH access
+# ---------------------------------------------------------------------------
+- name: Create coturn system user
+  user:
+    name: coturn
+    system: yes
+    shell: /usr/sbin/nologin
+    create_home: no
+
+# ---------------------------------------------------------------------------
+# SSH hardening
+# ---------------------------------------------------------------------------
+- name: Harden SSH — disable root login
+  lineinfile:
+    path: /etc/ssh/sshd_config
+    regexp: '^#?PermitRootLogin'
+    line: 'PermitRootLogin no'
+    validate: '/usr/sbin/sshd -t -f %s'
+    state: present
+  notify: Restart sshd
+
+- name: Harden SSH — disable password authentication
+  lineinfile:
+    path: /etc/ssh/sshd_config
+    regexp: '^#?PasswordAuthentication'
+    line: 'PasswordAuthentication no'
+    validate: '/usr/sbin/sshd -t -f %s'
+    state: present
+  notify: Restart sshd
+
+- name: Harden SSH — enable public key authentication
+  lineinfile:
+    path: /etc/ssh/sshd_config
+    regexp: '^#?PubkeyAuthentication'
+    line: 'PubkeyAuthentication yes'
+    validate: '/usr/sbin/sshd -t -f %s'
+    state: present
+  notify: Restart sshd
+
+- name: Harden SSH — disable challenge-response authentication
+  lineinfile:
+    path: /etc/ssh/sshd_config
+    regexp: '^#?ChallengeResponseAuthentication'
+    line: 'ChallengeResponseAuthentication no'
+    validate: '/usr/sbin/sshd -t -f %s'
+    state: present
+  notify: Restart sshd
+
+- name: Harden SSH — limit auth attempts
+  lineinfile:
+    path: /etc/ssh/sshd_config
+    regexp: '^#?MaxAuthTries'
+    line: 'MaxAuthTries 3'
+    validate: '/usr/sbin/sshd -t -f %s'
+    state: present
+  notify: Restart sshd
+
+- name: Harden SSH — shorten login grace time
+  lineinfile:
+    path: /etc/ssh/sshd_config
+    regexp: '^#?LoginGraceTime'
+    line: 'LoginGraceTime 30'
+    validate: '/usr/sbin/sshd -t -f %s'
+    state: present
+  notify: Restart sshd
+
+- name: Harden SSH — disable X11 forwarding
+  lineinfile:
+    path: /etc/ssh/sshd_config
+    regexp: '^#?X11Forwarding'
+    line: 'X11Forwarding no'
+    validate: '/usr/sbin/sshd -t -f %s'
+    state: present
+  notify: Restart sshd
+
+# ---------------------------------------------------------------------------
+# fail2ban — SSH brute-force protection
+# ---------------------------------------------------------------------------
+- name: Enable and start fail2ban
+  service:
+    name: fail2ban
+    state: started
+    enabled: yes
+
+# ---------------------------------------------------------------------------
+# UFW firewall
+# ---------------------------------------------------------------------------
+- name: UFW — reset to defaults
+  ufw:
+    state: reset
+
+- name: UFW — default deny incoming
+  ufw:
+    default: deny
+    direction: incoming
+
+- name: UFW — default allow outgoing
+  ufw:
+    default: allow
+    direction: outgoing
+
+- name: UFW — allow SSH
+  ufw:
+    rule: allow
+    port: "22"
+    proto: tcp
+
+- name: UFW — allow HTTP
+  ufw:
+    rule: allow
+    port: "80"
+    proto: tcp
+
+- name: UFW — allow HTTPS
+  ufw:
+    rule: allow
+    port: "443"
+    proto: tcp
+
+- name: UFW — allow TURN plain (TCP)
+  ufw:
+    rule: allow
+    port: "{{ turn_listening_port }}"
+    proto: tcp
+
+- name: UFW — allow TURN plain (UDP)
+  ufw:
+    rule: allow
+    port: "{{ turn_listening_port }}"
+    proto: udp
+
+- name: UFW — allow TURN TLS (TCP)
+  ufw:
+    rule: allow
+    port: "{{ turn_tls_listening_port }}"
+    proto: tcp
+
+- name: UFW — allow TURN TLS (UDP)
+  ufw:
+    rule: allow
+    port: "{{ turn_tls_listening_port }}"
+    proto: udp
+
+- name: UFW — allow TURN relay UDP range
+  ufw:
+    rule: allow
+    port: "{{ turn_min_port }}:{{ turn_max_port }}"
+    proto: udp
+
+- name: UFW — enable
+  ufw:
+    state: enabled

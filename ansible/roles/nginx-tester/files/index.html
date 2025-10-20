@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>TURN Server ICE Tester</title>
+  <style>
+    body { font-family: monospace; max-width: 700px; margin: 2rem auto; padding: 0 1rem; background: #111; color: #ccc; }
+    h1 { color: #fff; }
+    label { display: block; margin-top: 0.8rem; color: #aaa; font-size: 0.85rem; }
+    input { width: 100%; box-sizing: border-box; padding: 0.4rem 0.6rem; background: #222; border: 1px solid #444; color: #eee; border-radius: 3px; font-family: monospace; }
+    button { margin-top: 1.2rem; padding: 0.5rem 1.4rem; background: #2563eb; color: #fff; border: none; border-radius: 4px; cursor: pointer; font-size: 1rem; }
+    button:hover { background: #1d4ed8; }
+    #output { margin-top: 1.5rem; padding: 0.8rem; background: #1a1a1a; border: 1px solid #333; border-radius: 4px; min-height: 6rem; white-space: pre-wrap; font-size: 0.82rem; line-height: 1.5; }
+    .relay  { color: #4ade80; font-weight: bold; }
+    .srflx  { color: #facc15; }
+    .host   { color: #94a3b8; }
+    .error  { color: #f87171; }
+    .info   { color: #60a5fa; }
+    .hint   { font-size: 0.78rem; color: #666; margin-top: 0.3rem; }
+  </style>
+</head>
+<body>
+  <h1>TURN Server ICE Tester</h1>
+  <p>Generates HMAC-SHA1 REST credentials in-browser and runs ICE gathering.<br>
+     A <span class="relay">relay</span> candidate = TURN server is working.</p>
+
+  <label>TURN Host</label>
+  <input id="host" type="text" placeholder="turn.example.com" />
+
+  <label>TURN Port</label>
+  <input id="port" type="number" value="3478" />
+
+  <label>Shared Secret (static-auth-secret from turnserver.conf)</label>
+  <input id="secret" type="password" placeholder="your-static-auth-secret" />
+
+  <label>TTL (seconds)</label>
+  <input id="ttl" type="number" value="3600" />
+  <p class="hint">Credentials are generated as: username = &lt;expire_timestamp&gt;, credential = HMAC-SHA1(secret, username)</p>
+
+  <button onclick="runTest()">Run ICE Gathering</button>
+  <button onclick="document.getElementById('output').textContent=''" style="background:#333;margin-left:0.5rem">Clear</button>
+
+  <div id="output">Results will appear here…</div>
+
+  <script>
+    const log = (msg, cls) => {
+      const out = document.getElementById('output');
+      const line = document.createElement('span');
+      if (cls) line.className = cls;
+      line.textContent = msg + '\n';
+      out.appendChild(line);
+      out.scrollTop = out.scrollHeight;
+    };
+
+    // HMAC-SHA1 via WebCrypto
+    async function hmacSha1Base64(secret, message) {
+      const enc = new TextEncoder();
+      const key = await crypto.subtle.importKey(
+        'raw', enc.encode(secret),
+        { name: 'HMAC', hash: 'SHA-1' },
+        false, ['sign']
+      );
+      const sig = await crypto.subtle.sign('HMAC', key, enc.encode(message));
+      return btoa(String.fromCharCode(...new Uint8Array(sig)));
+    }
+
+    async function buildIceServers(host, port, secret, ttl) {
+      const expires = Math.floor(Date.now() / 1000) + parseInt(ttl, 10);
+      const username = String(expires);
+      const credential = await hmacSha1Base64(secret, username);
+
+      return [
+        // STUN (no auth needed — quick connectivity check)
+        { urls: `stun:${host}:${port}` },
+        // TURN UDP
+        { urls: `turn:${host}:${port}?transport=udp`, username, credential },
+        // TURN TCP
+        { urls: `turn:${host}:${port}?transport=tcp`, username, credential },
+        // TURN TLS
+        { urls: `turns:${host}:5349?transport=tcp`, username, credential },
+      ];
+    }
+
+    async function runTest() {
+      const host   = document.getElementById('host').value.trim();
+      const port   = document.getElementById('port').value.trim();
+      const secret = document.getElementById('secret').value.trim();
+      const ttl    = document.getElementById('ttl').value.trim();
+
+      const out = document.getElementById('output');
+      out.textContent = '';
+
+      if (!host || !secret) {
+        log('ERROR: host and secret are required.', 'error');
+        return;
+      }
+
+      log(`Starting ICE gathering → ${host}:${port}`, 'info');
+
+      let iceServers;
+      try {
+        iceServers = await buildIceServers(host, port, secret, ttl);
+      } catch (e) {
+        log(`ERROR building credentials: ${e.message}`, 'error');
+        return;
+      }
+
+      log(`Username: ${iceServers[1].username}`, 'info');
+      log(`Credential: ${iceServers[1].credential}`, 'info');
+      log('', null);
+
+      let pc;
+      try {
+        pc = new RTCPeerConnection({ iceServers });
+      } catch (e) {
+        log(`ERROR creating RTCPeerConnection: ${e.message}`, 'error');
+        return;
+      }
+
+      // Dummy data channel forces ICE gathering
+      pc.createDataChannel('test');
+
+      let done = false;
+      const finish = (reason) => {
+        if (done) return;
+        done = true;
+        log('', null);
+        log(`ICE gathering ${reason}.`, 'info');
+        pc.close();
+      };
+
+      pc.onicecandidate = ({ candidate }) => {
+        if (!candidate || candidate.candidate === '') {
+          finish('complete (null candidate)');
+          return;
+        }
+        const sdp = candidate.candidate;
+        // Parse type from SDP string directly — more reliable than candidate.type
+        const typeMatch = sdp.match(/typ (\S+)/);
+        const type = typeMatch ? typeMatch[1] : candidate.type;
+        const protoMatch = sdp.match(/^\S+ \S+ (\S+)/);
+        const proto = protoMatch ? protoMatch[1].toLowerCase() : candidate.protocol;
+        const addrMatch = sdp.match(/typ \S+ raddr (\S+)/);
+        const portMatch = sdp.match(/(\d+) typ /);
+        const relayAddr = sdp.match(/^\S+ \S+ \S+ \S+ (\S+) (\d+) typ relay/);
+
+        if (type === 'relay') {
+          const ip   = relayAddr ? relayAddr[1] : candidate.address;
+          const port = relayAddr ? relayAddr[2] : candidate.port;
+          log(`[relay]  ${proto} ${ip}:${port}  ← TURN working!`, 'relay');
+        } else if (type === 'srflx') {
+          const ip   = sdp.match(/^\S+ \S+ \S+ \S+ (\S+) (\d+) typ srflx/);
+          log(`[srflx]  ${proto} ${ip ? ip[1]+':'+ip[2] : '?'}`, 'srflx');
+        } else {
+          log(`[${type}]  ${sdp.split(' ').slice(0, 8).join(' ')}`, 'host');
+        }
+      };
+
+      pc.onicegatheringstatechange = () => {
+        if (pc.iceGatheringState === 'complete') finish('complete');
+      };
+
+      pc.oniceconnectionstatechange = () => {
+        log(`ICE connection state: ${pc.iceConnectionState}`, 'info');
+      };
+
+      try {
+        const offer = await pc.createOffer();
+        await pc.setLocalDescription(offer);
+      } catch (e) {
+        log(`ERROR during offer: ${e.message}`, 'error');
+        pc.close();
+      }
+
+      // Safety timeout
+      setTimeout(() => finish('timed out after 15 s'), 15000);
+    }
+  </script>
+</body>
+</html>
