@@ -1,0 +1,10 @@
+# Copy this file to terraform.tfvars and fill in your values.
+# terraform.tfvars is gitignored — never commit it.
+
+do_token       = "dop_v1_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+ssh_public_key = "ssh-ed25519 AAAAC3Nza... your-key-comment"
+
+# Optional overrides (defaults shown):
+# droplet_name = "coturn-fra1"
+# region       = "fra1"
+# droplet_size = "s-1vcpu-1gb"

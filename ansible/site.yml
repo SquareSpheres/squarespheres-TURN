@@ -1,0 +1,13 @@
+---
+- name: Provision coturn TURN server
+  hosts: turn_servers
+  become: yes
+
+  vars_files:
+    - group_vars/all/vars.yml
+
+  roles:
+    - bootstrap
+    - coturn
+    - tls
+    - docker

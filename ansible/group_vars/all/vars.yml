@@ -1,0 +1,26 @@
+# Non-sensitive TURN / Nginx configuration.
+# Edit these to match your deployment.
+
+turn_realm:  "turn.squarespheres.com"
+turn_domain: "turn.squarespheres.com"
+
+certbot_email: "yngvenot@gmail.com"
+
+turn_listening_port:     3478
+turn_tls_listening_port: 5349
+turn_min_port:           49152
+turn_max_port:           65535
+
+# Path on the server where the app is deployed
+app_deploy_path: "/opt/app"
+
+# SSH public key for the deploy user (Ansible / infrastructure operations).
+# This key should only exist on the operator's laptop.
+deploy_pubkey: "{{ lookup('file', '~/.ssh/id_ed25519.pub') }}"
+
+# SSH public key for the app-deploy user (CI/CD, docker compose updates only).
+# Generate with: ssh-keygen -t ed25519 -f ~/.ssh/id_ed25519_app_deploy -N ""
+app_deploy_pubkey: "{{ lookup('file', '~/.ssh/id_ed25519_app_deploy.pub') }}"
+
+# Secrets are loaded from ansible/group_vars/all/secrets.yml (gitignored).
+# Copy secrets.yml.example to secrets.yml and fill in the values.

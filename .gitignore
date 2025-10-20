@@ -1,0 +1,22 @@
+# Terraform secrets and state
+terraform/terraform.tfvars
+terraform/.terraform/
+terraform/.terraform.lock.hcl
+terraform/*.tfstate
+terraform/*.tfstate.backup
+
+# Ansible generated inventory and vault password files
+ansible/inventory.ini
+ansible/.vault_pass
+ansible/group_vars/all/secrets.yml
+
+# Environment files
+.env
+
+# App
+app/.env
+app/frontend/node_modules/
+app/frontend/dist/
+
+# macOS
+.DS_Store

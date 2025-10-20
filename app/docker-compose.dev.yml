@@ -1,0 +1,26 @@
+# Local development — hot reload, no TLS.
+# Usage: docker compose -f docker-compose.dev.yml up
+#
+# Or skip Docker entirely for pure frontend work:
+#   cd frontend && npm install && npm run dev
+
+services:
+  frontend:
+    image: node:20-alpine
+    working_dir: /app
+    command: sh -c "npm install && npm run dev -- --host 0.0.0.0"
+    ports:
+      - "5173:5173"
+    volumes:
+      - ./frontend:/app
+    environment:
+      # Point at the real TURN server while developing locally
+      VITE_TURN_HOST: ${TURN_DOMAIN:-turn.example.com}
+
+  # Uncomment when a backend service is added:
+  # backend:
+  #   build: ./backend
+  #   ports:
+  #     - "8000:8000"
+  #   volumes:
+  #     - ./backend:/app

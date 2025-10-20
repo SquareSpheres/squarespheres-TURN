@@ -1,0 +1,40 @@
+---
+- name: Install nginx
+  apt:
+    name: nginx
+    state: present
+    update_cache: yes
+
+- name: Deploy WebRTC ICE test page
+  copy:
+    src: index.html
+    dest: /var/www/html/index.html
+    owner: www-data
+    group: www-data
+    mode: "0644"
+
+- name: Deploy nginx HTTPS config
+  template:
+    src: tester.conf.j2
+    dest: /etc/nginx/sites-available/tester
+    mode: "0644"
+  notify: Restart nginx
+
+- name: Enable nginx site
+  file:
+    src: /etc/nginx/sites-available/tester
+    dest: /etc/nginx/sites-enabled/tester
+    state: link
+  notify: Restart nginx
+
+- name: Disable default nginx site
+  file:
+    path: /etc/nginx/sites-enabled/default
+    state: absent
+  notify: Restart nginx
+
+- name: Enable and start nginx
+  service:
+    name: nginx
+    state: started
+    enabled: yes

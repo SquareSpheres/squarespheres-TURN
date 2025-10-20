@@ -1,0 +1,92 @@
+---
+- name: Install certbot
+  apt:
+    name: certbot
+    state: present
+    update_cache: yes
+
+- name: Stop coturn to free port 80 for certbot standalone
+  service:
+    name: coturn
+    state: stopped
+
+- name: Obtain Let's Encrypt certificate
+  command: >
+    certbot certonly --standalone
+    -d {{ turn_domain }}
+    --email {{ certbot_email }}
+    --non-interactive
+    --agree-tos
+  args:
+    creates: /etc/letsencrypt/live/{{ turn_domain }}/fullchain.pem
+
+- name: Ensure ssl-cert group exists
+  group:
+    name: ssl-cert
+    state: present
+
+- name: Add turnserver user to ssl-cert group
+  user:
+    name: turnserver
+    groups: ssl-cert
+    append: yes
+
+- name: Set cert directory permissions
+  file:
+    path: /etc/letsencrypt/live/{{ turn_domain }}
+    owner: root
+    group: ssl-cert
+    mode: "0750"
+
+- name: Set cert file permissions — fullchain
+  file:
+    path: /etc/letsencrypt/live/{{ turn_domain }}/fullchain.pem
+    owner: root
+    group: ssl-cert
+    mode: "0640"
+
+- name: Set cert file permissions — privkey
+  file:
+    path: /etc/letsencrypt/live/{{ turn_domain }}/privkey.pem
+    owner: root
+    group: ssl-cert
+    mode: "0640"
+
+- name: Set archive directory permissions for renewal
+  file:
+    path: /etc/letsencrypt/archive/{{ turn_domain }}
+    owner: root
+    group: ssl-cert
+    mode: "0750"
+    recurse: yes
+
+- name: Update turnserver.conf with cert paths
+  set_fact:
+    turn_cert_path: "/etc/letsencrypt/live/{{ turn_domain }}/fullchain.pem"
+    turn_pkey_path: "/etc/letsencrypt/live/{{ turn_domain }}/privkey.pem"
+
+- name: Re-deploy turnserver.conf with TLS cert paths
+  template:
+    src: "{{ playbook_dir }}/roles/coturn/templates/turnserver.conf.j2"
+    dest: /etc/turnserver.conf
+    owner: root
+    group: turnserver
+    mode: "0640"
+
+- name: Start coturn
+  service:
+    name: coturn
+    state: started
+    enabled: yes
+
+- name: Add certbot renewal cron job
+  cron:
+    name: "certbot renew + restart services"
+    minute: "0"
+    hour: "*/12"
+    job: >-
+      certbot renew
+      --pre-hook  'cd {{ app_deploy_path }} && docker compose stop 2>/dev/null || true'
+      --post-hook 'cd {{ app_deploy_path }} && docker compose start 2>/dev/null || true; systemctl restart coturn'
+      >> /var/log/letsencrypt/renew.log 2>&1
+    user: root
