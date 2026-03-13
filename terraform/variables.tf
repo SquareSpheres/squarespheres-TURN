@@ -27,3 +27,70 @@ variable "droplet_size" {
   type        = string
   default     = "s-1vcpu-1gb"
 }
+
+variable "cf_api_token" {
+  description = "Cloudflare API token (Edit zone DNS permission)"
+  type        = string
+  sensitive   = true
+}
+
+variable "cf_zone_id" {
+  description = "Cloudflare Zone ID for the domain"
+  type        = string
+  sensitive   = true
+}
+
+variable "turn_domain" {
+  description = "Full domain for the TURN server (e.g. 'turn.example.com')"
+  type        = string
+}
+
+variable "deploy_pubkey" {
+  description = "SSH public key for the deploy user"
+  type        = string
+  sensitive   = true
+}
+
+variable "app_deploy_pubkey" {
+  description = "SSH public key for the app-deploy user (CI/CD)"
+  type        = string
+  sensitive   = true
+}
+
+variable "turn_static_secret" {
+  description = "HMAC-SHA1 static auth secret for coturn"
+  type        = string
+  sensitive   = true
+}
+
+variable "deploy_sudo_password_hash" {
+  description = "SHA-512 hashed password for the deploy user (/etc/shadow format)"
+  type        = string
+  sensitive   = true
+}
+
+variable "certbot_email" {
+  description = "Email for Let's Encrypt notifications"
+  type        = string
+  default     = ""
+}
+
+variable "turn_listening_port" {
+  type    = number
+  default = 3478
+}
+
+variable "turn_tls_listening_port" {
+  type    = number
+  default = 5349
+}
+
+variable "turn_min_port" {
+  type    = number
+  default = 49152
+}
+
+variable "turn_max_port" {
+  type    = number
+  default = 65535
+}

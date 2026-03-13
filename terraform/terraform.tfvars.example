@@ -4,7 +4,30 @@
 do_token       = "dop_v1_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
 ssh_public_key = "ssh-ed25519 AAAAC3Nza... your-key-comment"
 
+# Cloudflare — API token: dash.cloudflare.com → Profile → API Tokens → Create Token (Edit zone DNS)
+# Zone ID: domain overview page → right sidebar
+cf_api_token   = "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+cf_zone_id     = "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+turn_domain    = "turn.example.com"
+
+# SSH public keys (one per user)
+deploy_pubkey     = "ssh-ed25519 AAAAC3Nza... deploy-key"
+app_deploy_pubkey = "ssh-ed25519 AAAAC3Nza... app-deploy-key"
+
+# TURN static secret — generate: openssl rand -hex 32
+turn_static_secret = "REPLACE_WITH_SECRET"
+
+# SHA-512 hashed password for the deploy user (/etc/shadow format)
+# Generate: python3 -c "from passlib.hash import sha512_crypt; print(sha512_crypt.hash('yourpassword'))"
+# Or:       mkpasswd -m sha-512
+deploy_sudo_password_hash = "$6$REPLACE_WITH_HASH"
+
 # Optional overrides (defaults shown):
-# droplet_name = "coturn-fra1"
-# region       = "fra1"
-# droplet_size = "s-1vcpu-1gb"
+# certbot_email           = ""
+# droplet_name            = "coturn-fra1"
+# region                  = "fra1"
+# droplet_size            = "s-1vcpu-1gb"
+# turn_listening_port     = 3478
+# turn_tls_listening_port = 5349
+# turn_min_port           = 49152
+# turn_max_port           = 65535

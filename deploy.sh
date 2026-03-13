@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
 # Usage:
-#   ./deploy.sh            # full run: terraform → DNS → ansible → app
-#   ./deploy.sh terraform  # provision droplet only, print IP, exit
-#   ./deploy.sh ansible    # run ansible only (reads IP from terraform state)
-#   ./deploy.sh app        # build + deploy React app only
+#   ./deploy.sh              # full run: terraform → DNS → cloud-init → app
+#   ./deploy.sh terraform    # provision droplet only, print IP, exit
+#   ./deploy.sh bootstrap    # wait for cloud-init to finish (reads IP from terraform state)
+#   ./deploy.sh app          # build + deploy React app only
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 MODE="${1:-all}"
-# deploy user key — used for Ansible / infrastructure operations
+# deploy user key — used for infrastructure operations
 SSH_KEY="${SSH_KEY:-$HOME/.ssh/id_ed25519}"
 # app-deploy user key — used for CI/CD docker compose updates (restricted sudo)
 APP_DEPLOY_KEY="${APP_DEPLOY_KEY:-$HOME/.ssh/id_ed25519_app_deploy}"
@@ -21,25 +21,9 @@ get_droplet_ip() {
   terraform output -raw droplet_ip 2>/dev/null
 }
 
-# After the first Ansible run, root login is disabled and the deploy user
-# takes over. Detect which one is available so re-runs just work.
-get_ssh_user() {
-  local ip="$1"
-  if ssh -i "$SSH_KEY" -o StrictHostKeyChecking=no -o ConnectTimeout=5 -o BatchMode=yes deploy@"$ip" true 2>/dev/null; then
-    echo "deploy"
-  else
-    echo "root"
-  fi
-}
-
-write_inventory() {
-  local ip="$1"
-  local user="$2"
-  cat > "$SCRIPT_DIR/ansible/inventory.ini" <<EOF
-[turn_servers]
-$ip ansible_user=$user
-EOF
-  echo "==> Wrote ansible/inventory.ini (IP: $ip, user: $user)"
+get_turn_domain() {
+  cd "$SCRIPT_DIR/terraform"
+  terraform output -raw turn_domain 2>/dev/null
 }
 
 wait_for_ssh() {
@@ -62,7 +46,6 @@ wait_for_dns() {
   local domain="$1"
   local expected_ip="$2"
   echo "==> Waiting for DNS: $domain -> $expected_ip"
-  echo "    (Set your A record now if you haven't already)"
   until [ "$(dig +short "$domain" A | tail -1)" = "$expected_ip" ]; do
     echo "    DNS not propagated yet, checking again in 15 s..."
     sleep 15
@@ -86,17 +69,13 @@ run_terraform() {
   echo "$ip"
 }
 
-run_ansible() {
+wait_for_cloud_init() {
   local ip="$1"
-  local user
-  user=$(get_ssh_user "$ip")
-  echo "==> SSH user: $user"
-  write_inventory "$ip" "$user"
-  wait_for_ssh "$ip" "$user"
-  echo "==> Ansible: running site.yml..."
-  cd "$SCRIPT_DIR/ansible"
-  ansible-playbook site.yml --private-key "$SSH_KEY" --ask-become-pass
-  cd "$SCRIPT_DIR"
+  echo "==> Waiting for cloud-init to finish on $ip..."
+  wait_for_ssh "$ip" "deploy"
+  ssh -i "$SSH_KEY" -o StrictHostKeyChecking=no \
+    deploy@"$ip" 'cloud-init status --wait && cloud-init status --long'
+  echo "==> Cloud-init complete."
 }
 
 run_app_deploy() {
@@ -123,38 +102,33 @@ run_app_deploy() {
 }
 
 # ---------------------------------------------------------------------------
-# Read domain from vars.yml
-# ---------------------------------------------------------------------------
-TURN_DOMAIN=$(grep 'turn_domain:' "$SCRIPT_DIR/ansible/group_vars/all/vars.yml" \
-  | head -1 | sed 's/.*turn_domain:[[:space:]]*//' | tr -d '"' | tr -d "'")
-
-# ---------------------------------------------------------------------------
 # Modes
 # ---------------------------------------------------------------------------
 case "$MODE" in
 
   terraform)
     DROPLET_IP=$(run_terraform | tail -1)
+    TURN_DOMAIN=$(get_turn_domain)
     echo ""
-    echo "Next: point DNS A record for '$TURN_DOMAIN' -> $DROPLET_IP"
-    echo "Then: ./deploy.sh ansible"
+    echo "DNS A record for '$TURN_DOMAIN' -> $DROPLET_IP created via Cloudflare."
+    echo "Next: ./deploy.sh bootstrap"
     ;;
 
-  ansible)
+  bootstrap)
     DROPLET_IP=$(get_droplet_ip)
+    TURN_DOMAIN=$(get_turn_domain)
     if [ -z "$DROPLET_IP" ]; then
-      echo "ERROR: could not read droplet IP from Terraform state. Run ./deploy.sh terraform first."
+      echo "ERROR: Run ./deploy.sh terraform first."
       exit 1
     fi
-    echo "==> Using existing droplet IP: $DROPLET_IP"
     wait_for_dns "$TURN_DOMAIN" "$DROPLET_IP"
-    run_ansible "$DROPLET_IP"
-    echo ""
+    wait_for_cloud_init "$DROPLET_IP"
     echo "==> Done! Run ./deploy.sh app to deploy the frontend."
     ;;
 
   app)
     DROPLET_IP=$(get_droplet_ip)
+    TURN_DOMAIN=$(get_turn_domain)
     if [ -z "$DROPLET_IP" ]; then
       echo "ERROR: could not read droplet IP from Terraform state. Run ./deploy.sh terraform first."
       exit 1
@@ -167,8 +141,9 @@ case "$MODE" in
 
   all)
     DROPLET_IP=$(run_terraform | tail -1)
+    TURN_DOMAIN=$(get_turn_domain)
     wait_for_dns "$TURN_DOMAIN" "$DROPLET_IP"
-    run_ansible "$DROPLET_IP"
+    wait_for_cloud_init "$DROPLET_IP"
     run_app_deploy "$DROPLET_IP"
     echo ""
     echo "==> Done!"
@@ -177,7 +152,7 @@ case "$MODE" in
     ;;
 
   *)
-    echo "Usage: $0 [terraform|ansible|app|all]"
+    echo "Usage: $0 [terraform|bootstrap|app|all]"
     exit 1
     ;;
 
