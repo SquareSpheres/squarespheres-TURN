@@ -60,7 +60,7 @@ resource "cloudflare_record" "coturn" {
   zone_id = var.cf_zone_id
   # Cloudflare normalises the FQDN to just the subdomain ("turn") automatically.
   name    = var.turn_domain
-  value   = digitalocean_reserved_ip.coturn.ip_address
+  content = digitalocean_reserved_ip.coturn.ip_address
   type    = "A"
   ttl     = 60
   proxied = false
