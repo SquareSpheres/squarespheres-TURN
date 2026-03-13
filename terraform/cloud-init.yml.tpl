@@ -74,7 +74,7 @@ write_files:
       #!/bin/bash
       set -euo pipefail
       RESERVED_IP=$(curl -sf http://169.254.169.254/metadata/v1/floating_ip/ipv4/ip_address 2>/dev/null)
-      PUBLIC_IP=${RESERVED_IP:-$(curl -sf http://169.254.169.254/metadata/v1/interfaces/public/0/ipv4/address)}
+      PUBLIC_IP=$${RESERVED_IP:-$(curl -sf http://169.254.169.254/metadata/v1/interfaces/public/0/ipv4/address)}
       sed "s/RELAY_IP_PLACEHOLDER/$PUBLIC_IP/g" /etc/turnserver.conf.tpl > /etc/turnserver.conf
       chown root:turnserver /etc/turnserver.conf
       chmod 640 /etc/turnserver.conf
