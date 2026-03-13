@@ -47,7 +47,6 @@ write_files:
       realm=${turn_realm}
       use-auth-secret
       static-auth-secret=${turn_static_secret}
-      relay-ip=RELAY_IP_PLACEHOLDER
       external-ip=EXTERNAL_IP_PLACEHOLDER
       min-port=${turn_min_port}
       max-port=${turn_max_port}
@@ -73,12 +72,9 @@ write_files:
     content: |
       #!/bin/bash
       set -euo pipefail
-      EPHEMERAL_IP=$(curl -sf http://169.254.169.254/metadata/v1/interfaces/public/0/ipv4/address)
       RESERVED_IP=$(curl -sf http://169.254.169.254/metadata/v1/floating_ip/ipv4/ip_address 2>/dev/null)
-      EXTERNAL_IP=$${RESERVED_IP:-$EPHEMERAL_IP}
-      sed -e "s/RELAY_IP_PLACEHOLDER/$EPHEMERAL_IP/g" \
-          -e "s/EXTERNAL_IP_PLACEHOLDER/$EXTERNAL_IP/g" \
-          /etc/turnserver.conf.tpl > /etc/turnserver.conf
+      EXTERNAL_IP=$${RESERVED_IP:-$(curl -sf http://169.254.169.254/metadata/v1/interfaces/public/0/ipv4/address)}
+      sed "s/EXTERNAL_IP_PLACEHOLDER/$EXTERNAL_IP/g" /etc/turnserver.conf.tpl > /etc/turnserver.conf
       chown root:turnserver /etc/turnserver.conf
       chmod 640 /etc/turnserver.conf
 
