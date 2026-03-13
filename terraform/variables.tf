@@ -75,6 +75,12 @@ variable "certbot_email" {
   default     = ""
 }
 
+variable "certbot_staging" {
+  description = "Use Let's Encrypt staging environment (higher rate limits, untrusted cert)"
+  type        = bool
+  default     = false
+}
+
 variable "turn_listening_port" {
   type    = number
   default = 3478

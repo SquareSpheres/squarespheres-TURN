@@ -42,6 +42,8 @@ resource "digitalocean_droplet" "coturn" {
     deploy_pubkey             = var.deploy_pubkey
     app_deploy_pubkey         = var.app_deploy_pubkey
     deploy_sudo_password_hash = var.deploy_sudo_password_hash
+    reserved_ip               = digitalocean_reserved_ip.coturn.ip_address
+    certbot_staging           = var.certbot_staging
   })
 }
 

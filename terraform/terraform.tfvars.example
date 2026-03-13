@@ -23,6 +23,7 @@ turn_static_secret = "REPLACE_WITH_SECRET"
 deploy_sudo_password_hash = "$6$REPLACE_WITH_HASH"
 
 # Optional overrides (defaults shown):
+# certbot_staging         = false   # set true to use Let's Encrypt staging (avoids rate limits during testing)
 # certbot_email           = ""
 # droplet_name            = "coturn-fra1"
 # region                  = "fra1"

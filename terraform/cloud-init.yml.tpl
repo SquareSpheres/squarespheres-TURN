@@ -130,13 +130,17 @@ runcmd:
 
   # 5. TLS - stop coturn, get cert, set permissions, append cert paths, restart
   - systemctl stop coturn
-  - apt-get install -y certbot
+  - apt-get install -y certbot dnsutils
+  - >
+    until [ "$(dig +short ${turn_realm} A | tail -1)" = "${reserved_ip}" ];
+    do echo "Waiting for DNS to point to this IP..."; sleep 15; done
   - >
     certbot certonly --standalone
     -d ${turn_realm}
     --email ${certbot_email}
     --non-interactive
     --agree-tos
+    ${certbot_staging ? "--staging" : ""}
   - groupadd -f ssl-cert
   - usermod -aG ssl-cert turnserver
   - chown -R root:ssl-cert /etc/letsencrypt/live/${turn_realm}
