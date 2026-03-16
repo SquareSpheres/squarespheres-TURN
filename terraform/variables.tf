@@ -69,6 +69,11 @@ variable "deploy_sudo_password_hash" {
   sensitive   = true
 }
 
+variable "ssh_allowed_cidrs" {
+  description = "List of CIDRs allowed to reach SSH port 22 (e.g. your home IP: [\"1.2.3.4/32\"])"
+  type        = list(string)
+}
+
 variable "certbot_email" {
   description = "Email for Let's Encrypt notifications"
   type        = string

@@ -73,7 +73,7 @@ resource "digitalocean_firewall" "coturn" {
   inbound_rule {
     protocol         = "tcp"
     port_range       = "22"
-    source_addresses = ["0.0.0.0/0", "::/0"]
+    source_addresses = var.ssh_allowed_cidrs
   }
 
   inbound_rule {

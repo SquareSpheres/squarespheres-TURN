@@ -32,7 +32,7 @@ wait_for_ssh() {
   echo "==> Waiting for SSH on $ip..."
   until ssh \
     -i "$SSH_KEY" \
-    -o StrictHostKeyChecking=no \
+    -o StrictHostKeyChecking=accept-new \
     -o ConnectTimeout=5 \
     -o BatchMode=yes \
     "$user"@"$ip" true 2>/dev/null; do
@@ -73,7 +73,7 @@ wait_for_cloud_init() {
   local ip="$1"
   echo "==> Waiting for cloud-init to finish on $ip..."
   wait_for_ssh "$ip" "deploy"
-  ssh -i "$SSH_KEY" -o StrictHostKeyChecking=no \
+  ssh -i "$SSH_KEY" -o StrictHostKeyChecking=accept-new \
     deploy@"$ip" 'cloud-init status --wait && cloud-init status --long'
   echo "==> Cloud-init complete."
 }
@@ -83,7 +83,7 @@ run_app_deploy() {
   echo "==> Deploying app to $ip (user: app-deploy)..."
 
   # Write .env for docker compose (/opt/app is owned by app-deploy — no sudo needed)
-  ssh -i "$APP_DEPLOY_KEY" -o StrictHostKeyChecking=no app-deploy@"$ip" \
+  ssh -i "$APP_DEPLOY_KEY" -o StrictHostKeyChecking=accept-new app-deploy@"$ip" \
     "echo 'TURN_DOMAIN=$TURN_DOMAIN' > /opt/app/.env"
 
   # Sync app directory (excluding node_modules and local build artifacts)
@@ -91,11 +91,11 @@ run_app_deploy() {
     --exclude 'node_modules/' \
     --exclude 'dist/' \
     --exclude '.env' \
-    -e "ssh -i $APP_DEPLOY_KEY -o StrictHostKeyChecking=no" \
+    -e "ssh -i $APP_DEPLOY_KEY -o StrictHostKeyChecking=accept-new" \
     "$SCRIPT_DIR/app/" app-deploy@"$ip":/opt/app/
 
   # Build and start on the server
-  ssh -i "$APP_DEPLOY_KEY" -o StrictHostKeyChecking=no app-deploy@"$ip" \
+  ssh -i "$APP_DEPLOY_KEY" -o StrictHostKeyChecking=accept-new app-deploy@"$ip" \
     "sudo /usr/bin/docker compose -f /opt/app/docker-compose.yml up --build -d"
 
   echo "==> App deployed."

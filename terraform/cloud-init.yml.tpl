@@ -33,10 +33,42 @@ write_files:
     permissions: "0440"
     content: "deploy ALL=(ALL) ALL\n"
 
-  # Sudoers for app-deploy (passwordless, restricted to docker compose on /opt/app)
+  # Sudoers for app-deploy (passwordless, restricted to explicit docker compose subcommands)
   - path: /etc/sudoers.d/app-deploy
     permissions: "0440"
-    content: "app-deploy ALL=(ALL) NOPASSWD: /usr/bin/docker compose -f /opt/app/docker-compose.yml *\n"
+    content: |
+      app-deploy ALL=(ALL) NOPASSWD: /usr/bin/docker compose -f /opt/app/docker-compose.yml up --build -d
+      app-deploy ALL=(ALL) NOPASSWD: /usr/bin/docker compose -f /opt/app/docker-compose.yml stop
+      app-deploy ALL=(ALL) NOPASSWD: /usr/bin/docker compose -f /opt/app/docker-compose.yml start
+      app-deploy ALL=(ALL) NOPASSWD: /usr/bin/docker compose -f /opt/app/docker-compose.yml down
+      app-deploy ALL=(ALL) NOPASSWD: /usr/bin/docker compose -f /opt/app/docker-compose.yml pull
+      app-deploy ALL=(ALL) NOPASSWD: /usr/bin/docker compose -f /opt/app/docker-compose.yml logs *
+
+  # fail2ban SSH jail config
+  - path: /etc/fail2ban/jail.d/sshd.conf
+    permissions: "0644"
+    content: |
+      [sshd]
+      enabled = true
+      port = 22
+      maxretry = 5
+      findtime = 600
+      bantime = 3600
+
+  # logrotate for coturn
+  - path: /etc/logrotate.d/turnserver
+    permissions: "0644"
+    content: |
+      /var/log/turnserver/turn.log {
+        daily
+        rotate 7
+        compress
+        missingok
+        notifempty
+        postrotate
+          systemctl restart coturn
+        endscript
+      }
 
   # turnserver.conf template - relay-ip placeholder filled by helper script
   - path: /etc/turnserver.conf.tpl
@@ -100,7 +132,12 @@ write_files:
 runcmd:
   # 1. Base packages
   - apt-get update -y
-  - apt-get install -y ufw sudo fail2ban
+  - apt-get install -y ufw sudo fail2ban unattended-upgrades
+  - echo 'Unattended-Upgrade::Automatic-Reboot "false";' > /etc/apt/apt.conf.d/51unattended-upgrades-local
+  - systemctl enable unattended-upgrades
+  - systemctl start unattended-upgrades
+  - systemctl enable fail2ban
+  - systemctl start fail2ban
 
   # 2. SSH hardening
   - systemctl restart sshd
@@ -175,5 +212,9 @@ runcmd:
 
   # 8. Cleanup - remove template file containing the static secret
   - rm -f /etc/turnserver.conf.tpl
+
+  # 9. Remove cloud-init user-data (contains TURN secret and password hash)
+  - rm -f /var/lib/cloud/instance/user-data.txt
+  - rm -rf /var/lib/cloud/instance/scripts/
 
 final_message: "cloud-init bootstrap complete"

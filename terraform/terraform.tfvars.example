@@ -22,6 +22,10 @@ turn_static_secret = "REPLACE_WITH_SECRET"
 # Or:       mkpasswd -m sha-512
 deploy_sudo_password_hash = "$6$REPLACE_WITH_HASH"
 
+# CIDRs allowed to reach SSH port 22 — use your public IP with /32 for a single address.
+# Find your IP: curl ifconfig.me
+ssh_allowed_cidrs = ["1.2.3.4/32"]
+
 # Optional overrides (defaults shown):
 # certbot_staging         = false   # set true to use Let's Encrypt staging (avoids rate limits during testing)
 # certbot_email           = ""
